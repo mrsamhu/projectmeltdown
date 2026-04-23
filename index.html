@@ -76,7 +76,7 @@
         #empathy-fill {
             height: 100%;
             background-color: var(--accent);
-            width: 50%;
+            width: 0%;
             transition: width 0.5s ease, background-color 0.5s ease;
         }
 
@@ -161,7 +161,7 @@
         <div class="meter-container" id="meter-ui">
             <div class="meter-label">
                 <span>Overall Empathy & Social Score</span>
-                <span id="score-display">50%</span>
+                <span id="score-display">0%</span>
             </div>
             <div class="meter-bar">
                 <div id="empathy-fill"></div>
@@ -174,9 +174,11 @@
     </div>
 
     <script>
-        // Game State
-        let currentScore = 50;
-        let passedScenarios = new Set(); // Tracks successfully completed scenarios
+        // Game State Engine
+        let lockedScores = { s1: 0, s2: 0, s3: 0, s4: 0, s5: 0 };
+        let passedScenarios = new Set();
+        let activeScenario = null;
+        let activeTempScore = 0; // Tracks points in the current scenario before they are locked
 
         // UI Elements
         const storyTextEl = document.getElementById('story-text');
@@ -186,25 +188,28 @@
         const empathyFillEl = document.getElementById('empathy-fill');
         const titleEl = document.getElementById('scenario-title');
 
-        function updateScore(change) {
-            currentScore += change;
+        function updateScoreDisplay() {
+            // Score is the sum of perfectly completed scenarios PLUS any correct answers in the current attempt
+            let totalLocked = Object.values(lockedScores).reduce((a, b) => a + b, 0);
+            let currentScore = totalLocked + activeTempScore;
+            
             if (currentScore > 100) currentScore = 100;
             if (currentScore < 0) currentScore = 0;
             
             scoreDisplayEl.textContent = currentScore + '%';
             empathyFillEl.style.width = currentScore + '%';
 
-            if (currentScore >= 70) empathyFillEl.style.backgroundColor = 'var(--success)';
-            else if (currentScore <= 30) empathyFillEl.style.backgroundColor = 'var(--danger)';
+            if (currentScore === 100) empathyFillEl.style.backgroundColor = 'var(--success)';
             else empathyFillEl.style.backgroundColor = 'var(--accent)';
         }
 
         // Scene Database
+        // 10 points awarded per correct choice. 2 correct choices per scenario = 20 points locked.
         const scenes = {
             // MAIN MENU
             hub: {
                 title: "Select a Scenario",
-                text: "Welcome. Choose a situation below to test your social and emotional decision-making skills. Your choices will impact your overall score.",
+                text: "Welcome. Complete each scenario perfectly to earn 20%. If you make a mistake, you'll have to restart that scenario to lock in your points. Get 100% to prove your social mastery.",
                 getChoices: () => [
                     { text: passedScenarios.has('s1') ? "Scenario 1: LLP Project ✅" : "Scenario 1: The LLP Project Meltdown", next: "s1_start", key: 's1' },
                     { text: passedScenarios.has('s2') ? "Scenario 2: Cafeteria ✅" : "Scenario 2: The Cafeteria Exclusion", next: "s2_start", key: 's2' },
@@ -219,19 +224,19 @@
                 title: "Scenario 1: The LLP Project",
                 text: "Your group is planning a school-wide upcycling pitch. Jordan rolls his eyes and says to Taylor: 'Your upcycling idea is trash. This is stupid.' Taylor looks down and stops typing. What do you do?",
                 choices: [
-                    { text: "Yell: 'Don't be a jerk, you haven't done anything!'", next: "s1_bad", score: -10, tag: "CASEL: Self-Management", feedback: "Reacting with anger escalated the conflict." },
-                    { text: "Ignore it to avoid drama.", next: "s1_bad", score: -10, tag: "CASEL: Social Awareness", feedback: "Ignoring the bullying validated Jordan's toxic behavior." },
+                    { text: "Yell: 'Don't be a jerk, you haven't done anything!'", next: "s1_bad", score: 0, tag: "CASEL: Self-Management", feedback: "Reacting with anger escalated the conflict." },
+                    { text: "Ignore it to avoid drama.", next: "s1_bad", score: 0, tag: "CASEL: Social Awareness", feedback: "Ignoring the bullying validated Jordan's toxic behavior." },
                     { text: "Calmly say: 'Let's keep it respectful. Taylor, what was your idea?'", next: "s1_step2", score: 10, tag: "CASEL: Relationship Skills", feedback: "Good start. You set boundaries against bullying and used active listening." }
                 ]
             },
             s1_step2: {
                 text: "Jordan backs down, but Taylor is still staring at their desk, looking too anxious to share their idea. How do you encourage them?",
                 choices: [
-                    { text: "Push them: 'Come on Taylor, just tell us so we can finish.'", next: "s1_mixed", score: -5, tag: "CASEL: Social Awareness", feedback: "Being pushy adds pressure and ignores Taylor's emotional state." },
-                    { text: "Support them: 'Take your time, Taylor. I thought your idea about the tote bags was really cool.'", next: "s1_good", score: 15, tag: "CASEL: Relationship Skills", feedback: "Excellent. You provided a safe, supportive space for a quiet teammate to contribute." }
+                    { text: "Push them: 'Come on Taylor, just tell us so we can finish.'", next: "s1_mixed", score: 0, tag: "CASEL: Social Awareness", feedback: "Being pushy adds pressure and ignores Taylor's emotional state." },
+                    { text: "Support them: 'Take your time, Taylor. I thought your idea about the tote bags was really cool.'", next: "s1_good", score: 10, tag: "CASEL: Relationship Skills", feedback: "Excellent. You provided a safe, supportive space for a quiet teammate to contribute." }
                 ]
             },
-            s1_bad: { text: "The group falls apart. The project is ruined.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
+            s1_bad: { text: "The group falls apart. The project is ruined. You need to rethink your approach.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
             s1_mixed: { text: "The pitch gets done, but Taylor never speaks again. The group dynamic remains tense.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
             s1_good: { text: "Taylor smiles and shares a great idea about upcycling uniforms. The group succeeds together.", markPassed: 's1', choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
 
@@ -240,15 +245,15 @@
                 title: "Scenario 2: The Cafeteria",
                 text: "During recess, you notice a new transfer student sitting alone. Two of your friends start whispering and laughing at the new student's lunch. What do you do?",
                 choices: [
-                    { text: "Laugh along with your friends to fit in.", next: "s2_bad", score: -10, tag: "CASEL: Responsible Decision-Making", feedback: "You chose peer approval over ethics, engaging in indirect bullying." },
+                    { text: "Laugh along with your friends to fit in.", next: "s2_bad", score: 0, tag: "CASEL: Responsible Decision-Making", feedback: "You chose peer approval over ethics, engaging in indirect bullying." },
                     { text: "Tell your friends: 'Not cool guys.'", next: "s2_step2", score: 10, tag: "CASEL: Social Awareness", feedback: "Good. You stood up to peer pressure." }
                 ]
             },
             s2_step2: {
                 text: "One of your friends rolls their eyes and says, 'Chill out, it's just a joke.' They look at you, waiting for you to back down.",
                 choices: [
-                    { text: "'Whatever, I'm just gonna go sit somewhere else.'", next: "s2_mixed", score: 5, tag: "CASEL: Self-Awareness", feedback: "You removed yourself from a toxic situation, but didn't fully support the victim." },
-                    { text: "'Jokes are supposed to be funny, not mean. I'm going to ask if they want to sit with us.'", next: "s2_good", score: 15, tag: "CASEL: Responsible Decision-Making", feedback: "Perfect. You firmly defended your values and actively included the new student." }
+                    { text: "'Whatever, I'm just gonna go sit somewhere else.'", next: "s2_mixed", score: 0, tag: "CASEL: Self-Awareness", feedback: "You removed yourself from a toxic situation, but didn't fully support the victim." },
+                    { text: "'Jokes are supposed to be funny, not mean. I'm going to ask if they want to sit with us.'", next: "s2_good", score: 10, tag: "CASEL: Responsible Decision-Making", feedback: "Perfect. You firmly defended your values and actively included the new student." }
                 ]
             },
             s2_bad: { text: "The new student notices the laughing and leaves the cafeteria looking crushed.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
@@ -260,15 +265,15 @@
                 title: "Scenario 3: The Group Chat",
                 text: "A classmate sends a humiliating photo of another student in your class WhatsApp group, adding a mean caption. People are replying with laughing emojis.",
                 choices: [
-                    { text: "Reply with a laughing emoji. It's just a joke.", next: "s3_bad", score: -10, tag: "CASEL: Social Awareness", feedback: "You actively participated in cyberbullying." },
+                    { text: "Reply with a laughing emoji. It's just a joke.", next: "s3_bad", score: 0, tag: "CASEL: Social Awareness", feedback: "You actively participated in cyberbullying." },
                     { text: "Reply to the group: 'This is cyberbullying. Delete it.'", next: "s3_step2", score: 10, tag: "CASEL: Responsible Decision-Making", feedback: "You showed strong ethical leadership by calling out digital harassment." }
                 ]
             },
             s3_step2: {
                 text: "The sender replies in the group: 'Wow, somebody can't take a joke.' A few other classmates go quiet, waiting to see what happens next.",
                 choices: [
-                    { text: "Type back: 'You're an idiot.'", next: "s3_mixed", score: -5, tag: "CASEL: Self-Management", feedback: "You started a flame war, which escalates the drama rather than helping the victim." },
-                    { text: "Screenshot the chat as evidence, put your phone away, and check on the victim in person the next day.", next: "s3_good", score: 15, tag: "CASEL: Relationship Skills", feedback: "Excellent. You didn't feed the troll, gathered evidence, and supported the victim directly." }
+                    { text: "Type back: 'You're an idiot.'", next: "s3_mixed", score: 0, tag: "CASEL: Self-Management", feedback: "You started a flame war, which escalates the drama rather than helping the victim." },
+                    { text: "Screenshot the chat as evidence, put your phone away, and check on the victim in person the next day.", next: "s3_good", score: 10, tag: "CASEL: Relationship Skills", feedback: "Excellent. You didn't feed the troll, gathered evidence, and supported the victim directly." }
                 ]
             },
             s3_bad: { text: "The photo spreads, causing severe emotional distress to the student.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
@@ -280,7 +285,7 @@
                 title: "Scenario 4: CCA Tryouts",
                 text: "During a tense sports CCA tryout, your teammate drops the ball, costing your team a point. Another player immediately shouts a severe vulgarity at them.",
                 choices: [
-                    { text: "Shout back at the toxic player: 'Shut your mouth!'", next: "s4_bad", score: -10, tag: "CASEL: Self-Management", feedback: "Fighting fire with fire destroys team morale and shows poor emotional regulation." },
+                    { text: "Shout back at the toxic player: 'Shut your mouth!'", next: "s4_bad", score: 0, tag: "CASEL: Self-Management", feedback: "Fighting fire with fire destroys team morale and shows poor emotional regulation." },
                     { text: "Say loudly: 'Hey, watch the language! Let's get the next point.'", next: "s4_step2", score: 10, tag: "CASEL: Self-Management", feedback: "Good job de-escalating the tension and refocusing the team." }
                 ]
             },
@@ -288,7 +293,7 @@
                 text: "The toxic player stops shouting, but your teammate who made the mistake is visibly shaking and looks ready to give up.",
                 choices: [
                     { text: "Ignore it and just serve the ball to keep the game moving.", next: "s4_mixed", score: 0, tag: "CASEL: Social Awareness", feedback: "You missed a crucial opportunity to rebuild your teammate's confidence." },
-                    { text: "Walk over, give them a high-five, and say, 'Don't sweat it, you've got this.'", next: "s4_good", score: 15, tag: "CASEL: Relationship Skills", feedback: "Brilliant. You demonstrated true leadership and empathy, turning a bad moment into a supportive one." }
+                    { text: "Walk over, give them a high-five, and say, 'Don't sweat it, you've got this.'", next: "s4_good", score: 10, tag: "CASEL: Relationship Skills", feedback: "Brilliant. You demonstrated true leadership and empathy, turning a bad moment into a supportive one." }
                 ]
             },
             s4_bad: { text: "The game turns into a shouting match. The coach benches both of you.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
@@ -300,15 +305,15 @@
                 title: "Scenario 5: Stolen Credit",
                 text: "You are doing a joint presentation. You did all the research for slides 3 and 4. During the presentation, your partner suddenly presents those slides as if they did all the work themselves.",
                 choices: [
-                    { text: "Interrupt them immediately: 'Liar! I did that!'", next: "s5_bad", score: -10, tag: "CASEL: Self-Management", feedback: "An outburst during a presentation shows poor emotional regulation." },
+                    { text: "Interrupt them immediately: 'Liar! I did that!'", next: "s5_bad", score: 0, tag: "CASEL: Self-Management", feedback: "An outburst during a presentation shows poor emotional regulation." },
                     { text: "Wait until their part finishes, then seamlessly add: 'To expand on the research I conducted for these slides...'", next: "s5_step2", score: 10, tag: "CASEL: Responsible Decision-Making", feedback: "You maintained professionalism while firmly claiming credit for your hard work." }
                 ]
             },
             s5_step2: {
                 text: "The presentation finishes. As you walk back to your desks, your partner whispers angrily: 'Why did you try to make me look bad in front of the teacher?'",
                 choices: [
-                    { text: "'Because you stole my work, you snake!'", next: "s5_mixed", score: -5, tag: "CASEL: Relationship Skills", feedback: "You let anger take over, turning a professional boundary into a personal attack." },
-                    { text: "'I just made sure my contributions were acknowledged. Next time, let's clearly divide who presents what.'", next: "s5_good", score: 15, tag: "CASEL: Self-Awareness", feedback: "Perfect. You stood your ground, communicated clearly, and offered a constructive solution for the future." }
+                    { text: "'Because you stole my work, you snake!'", next: "s5_mixed", score: 0, tag: "CASEL: Relationship Skills", feedback: "You let anger take over, turning a professional boundary into a personal attack." },
+                    { text: "'I just made sure my contributions were acknowledged. Next time, let's clearly divide who presents what.'", next: "s5_good", score: 10, tag: "CASEL: Self-Awareness", feedback: "Perfect. You stood your ground, communicated clearly, and offered a constructive solution for the future." }
                 ]
             },
             s5_bad: { text: "The teacher docks points from both of you for lack of professionalism and teamwork.", choices: [{ text: "Return to Menu", next: "hub", isMenu: true }] },
@@ -319,13 +324,17 @@
         function renderScene(sceneId, previousFeedbackTag = null, previousFeedback = null) {
             const scene = scenes[sceneId];
             
-            // Mark scenario as passed if applicable
+            // Check if they successfully completed the scenario
             if (scene.markPassed) {
                 passedScenarios.add(scene.markPassed);
+                lockedScores[scene.markPassed] = 20; // Lock in the 20% for a perfect run
+                activeTempScore = 0; // Clear temp score since it's now locked
             }
 
-            // Handle Hub/Menu Reset
+            // Handle Resetting logic when returning to Menu
             if (sceneId === 'hub') {
+                activeTempScore = 0; // If they return without passing, they lose current attempt progress
+                activeScenario = null;
                 feedbackPanelEl.style.display = 'none';
                 titleEl.textContent = scene.title;
             } else {
@@ -337,6 +346,9 @@
                     feedbackPanelEl.style.display = 'none';
                 }
             }
+
+            // Always update UI on render to reflect lost/gained points accurately
+            updateScoreDisplay();
 
             storyTextEl.textContent = scene.text;
             choicesContainerEl.innerHTML = '';
@@ -351,15 +363,20 @@
                     btn.classList.add('menu-btn');
                 }
 
-                // Disable if the scenario is already passed
+                // Disable the button on the hub if the scenario is already passed
                 if (sceneId === 'hub' && passedScenarios.has(choice.key)) {
                     btn.disabled = true;
                 }
 
                 btn.onclick = () => {
-                    if (choice.score) {
-                        updateScore(choice.score);
+                    // Start tracking temp points for a specific scenario
+                    if (sceneId === 'hub') {
+                        activeScenario = choice.key;
+                        activeTempScore = 0; 
+                    } else if (choice.score) {
+                        activeTempScore += choice.score;
                     }
+                    
                     renderScene(choice.next, choice.tag, choice.feedback);
                 };
                 choicesContainerEl.appendChild(btn);
